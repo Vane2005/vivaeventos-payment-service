@@ -1,0 +1,42 @@
+services:
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vivaeventos-payment-service
+    ports:
+      - "8084:8084"
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment-db
+      RABBITMQ_HOST: rabbitmq
+      SERVICES_ORDER_SERVICE_URL: http://host.docker.internal:8083
+    depends_on:
+      - postgres
+      - rabbitmq
+    restart: always
+
+  postgres:
+    image: postgres:15
+    container_name: payment-service-db
+    restart: always
+    environment:
+      POSTGRES_DB: payment-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: payment-service-rabbitmq
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    restart: always
+
+volumes:
+  postgres_data:
