@@ -71,6 +71,9 @@ class SuccessfulPaymentFlowIntegrationTest {
         registry.add("services.order-service.url", () -> orderServiceMock.url("/").toString().replaceAll("/$", ""));
     }
 
+    private static final String ORDER_CUSTOMER_EMAIL = "correo.real@ejemplo.com";
+    private static final String ORDER_CURRENCY = "COP";
+
     @Test
     void approvedPayment_updatesOrderAndPublishesTicketEvent() throws Exception {
         var orderId = UUID.randomUUID();
@@ -80,9 +83,11 @@ class SuccessfulPaymentFlowIntegrationTest {
                         {
                           "id": "%s",
                           "status": "PENDING",
-                          "totalPrice": 80000.00
+                          "totalPrice": 80000.00,
+                          "customerEmail": "%s",
+                          "currency": "%s"
                         }
-                        """.formatted(orderId))
+                        """.formatted(orderId, ORDER_CUSTOMER_EMAIL, ORDER_CURRENCY))
                 .addHeader("Content-Type", "application/json"));
 
         orderServiceMock.enqueue(new MockResponse().setResponseCode(200));
@@ -99,7 +104,12 @@ class SuccessfulPaymentFlowIntegrationTest {
         );
 
         assertThat(initiateResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(initiateResponse.getBody().currency()).isEqualTo(ORDER_CURRENCY);
         var reference = initiateResponse.getBody().gatewayReference();
+
+        var paymentAfterInitiate = paymentJpaRepository.findByGatewayReference(reference).orElseThrow();
+        assertThat(paymentAfterInitiate.getCustomerEmail()).isEqualTo(ORDER_CUSTOMER_EMAIL);
+        assertThat(paymentAfterInitiate.getCurrency()).isEqualTo(ORDER_CURRENCY);
 
         var callbackResponse = restTemplate.postForEntity(
                 "/api/v1/payments/callback/wompi",
