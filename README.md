@@ -13,10 +13,11 @@ Microservicio de pagos (US-08). Puerto **8084**, BD PostgreSQL **5435**.
 
 ## Contrato con order-service
 
-- `GET /api/v1/orders/{orderId}` → `{ id, status, totalAmount, currency, customerEmail }`
-- `PUT /api/v1/orders/{orderId}/payment-approved` → marca la orden como `PAGO_APROBADO`
+- `GET /api/v1/orders/{orderId}` → `{ id, status, totalPrice, customerEmail, currency }`
+  - `customerEmail` y `currency` son obligatorios para iniciar el pago (pasarela Wompi).
+- `PATCH /api/v1/orders/{orderId}/confirm` → confirma el pago de la orden
 
-Estados válidos para iniciar pago: `PENDIENTE_DE_PAGO`.
+Estados válidos para iniciar pago en payment-service: `PENDING` (respuesta de order-service).
 
 ## Mensajería RabbitMQ
 

@@ -38,12 +38,14 @@ public class OrderServiceRestClient implements OrderServicePort {
                 throw new InvalidOrderStateException("Orden no encontrada: " + orderId);
             }
 
+            validateOrderData(response, orderId);
+
             return new Order(
-                    response.id(),
-                    parseStatus(response.status()),
-                    response.totalPrice(),
-                    "COP", // Defaulting to COP since order-service doesn't provide it
-                    "cliente@vivaeventos.com" // Defaulting since order-service doesn't provide it
+                response.id(),
+                parseStatus(response.status()),
+                response.totalPrice(),
+                response.currency(),
+                response.customerEmail()
             );
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
@@ -61,6 +63,19 @@ public class OrderServiceRestClient implements OrderServicePort {
                 .toBodilessEntity();
     }
 
+    private void validateOrderData(OrderResponse response, UUID orderId) {
+        if (response.customerEmail() == null || response.customerEmail().isBlank()) {
+            throw new InvalidOrderStateException(
+                    "La orden " + orderId + " no incluye email del cliente"
+            );
+        }
+        if (response.currency() == null || response.currency().isBlank()) {
+            throw new InvalidOrderStateException(
+                    "La orden " + orderId + " no incluye moneda"
+            );
+        }
+    }
+
     private OrderStatus parseStatus(String status) {
         if (status == null) {
             throw new InvalidOrderStateException("La orden no tiene estado definido");
@@ -69,8 +84,10 @@ public class OrderServiceRestClient implements OrderServicePort {
     }
 
     record OrderResponse(
-            UUID id,
-            String status,
-            BigDecimal totalPrice
+        UUID id,
+        String status,
+        BigDecimal totalPrice,
+        String customerEmail,
+        String currency
     ) {}
 }

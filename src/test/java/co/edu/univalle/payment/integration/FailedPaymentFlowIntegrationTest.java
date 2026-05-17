@@ -81,7 +81,9 @@ class FailedPaymentFlowIntegrationTest {
                         {
                           "id": "%s",
                           "status": "PENDING",
-                          "totalPrice": 150000.00
+                          "totalPrice": 150000.00,
+                          "customerEmail": "correo.real@ejemplo.com",
+                          "currency": "COP"
                         }
                         """.formatted(orderId))
                 .addHeader("Content-Type", "application/json"));
@@ -121,6 +123,8 @@ class FailedPaymentFlowIntegrationTest {
         assertThat(callbackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         var payment = paymentJpaRepository.findByGatewayReference(reference).orElseThrow();
+        assertThat(payment.getCustomerEmail()).isEqualTo("correo.real@ejemplo.com");
+        assertThat(payment.getCurrency()).isEqualTo("COP");
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FALLIDO);
         assertThat(payment.getFailureReason()).isNotBlank();
 
