@@ -20,38 +20,31 @@ public class InitiatePaymentUseCase {
     private final PaymentRepositoryPort paymentRepository;
     private final OrderServicePort orderService;
     private final PaymentGatewayPort paymentGateway;
+    private final PreventDuplicateChargeUseCase preventDuplicateChargeUseCase;
 
     public InitiatePaymentUseCase(
             PaymentRepositoryPort paymentRepository,
             OrderServicePort orderService,
-            PaymentGatewayPort paymentGateway
+            PaymentGatewayPort paymentGateway,
+            PreventDuplicateChargeUseCase preventDuplicateChargeUseCase
     ) {
         this.paymentRepository = paymentRepository;
         this.orderService = orderService;
         this.paymentGateway = paymentGateway;
+        this.preventDuplicateChargeUseCase = preventDuplicateChargeUseCase;
+
     }
 
     @Transactional
     public PaymentResponse execute(UUID orderId) {
+        preventDuplicateChargeUseCase.validate(orderId);
+
         var order = orderService.getOrder(orderId);
 
         if (!order.isPendingPayment()) {
             throw new InvalidOrderStateException(
                     "Solo órdenes en estado PENDING pueden procesarse. Estado actual: " + order.status()
             );
-        }
-
-        if (paymentRepository.existsByOrderIdAndStatusIn(
-                orderId, PaymentStatus.PENDIENTE, PaymentStatus.EN_PROCESO, PaymentStatus.APROBADO
-        )) {
-            var existing = paymentRepository.findActiveByOrderId(orderId);
-            if (existing.isPresent() && existing.get().status() == PaymentStatus.APROBADO) {
-                throw new DuplicatePaymentException(orderId);
-            }
-            if (existing.isPresent()) {
-                return PaymentResponse.from(existing.get());
-            }
-            throw new DuplicatePaymentException(orderId);
         }
 
         var now = Instant.now();
