@@ -8,8 +8,10 @@ import co.edu.univalle.payment.domain.model.PaymentStatus;
 import co.edu.univalle.payment.domain.port.OrderServicePort;
 import co.edu.univalle.payment.domain.port.PaymentGatewayPort;
 import co.edu.univalle.payment.domain.port.PaymentRepositoryPort;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -21,17 +23,26 @@ public class InitiatePaymentUseCase {
     private final OrderServicePort orderService;
     private final PaymentGatewayPort paymentGateway;
     private final PreventDuplicateChargeUseCase preventDuplicateChargeUseCase;
+    private final RabbitTemplate rabbitTemplate;
+
+    @Value("${vivaeventos.messaging.exchange}")
+    private String exchange;
+
+    @Value("${vivaeventos.messaging.routing-key.approved}")
+    private String approvedRoutingKey;
 
     public InitiatePaymentUseCase(
             PaymentRepositoryPort paymentRepository,
             OrderServicePort orderService,
             PaymentGatewayPort paymentGateway,
-            PreventDuplicateChargeUseCase preventDuplicateChargeUseCase
+            PreventDuplicateChargeUseCase preventDuplicateChargeUseCase,
+            RabbitTemplate rabbitTemplate
     ) {
         this.paymentRepository = paymentRepository;
         this.orderService = orderService;
         this.paymentGateway = paymentGateway;
         this.preventDuplicateChargeUseCase = preventDuplicateChargeUseCase;
+        this.rabbitTemplate = rabbitTemplate;
 
     }
 
@@ -85,6 +96,10 @@ public class InitiatePaymentUseCase {
             );
         }
         updated = paymentRepository.save(updated);
+        if (updated.status() == PaymentStatus.APROBADO) {
+            orderService.markPaymentApproved(orderId);
+            rabbitTemplate.convertAndSend(exchange, approvedRoutingKey, PaymentResponse.from(updated));
+        }
         return PaymentResponse.from(updated);
     }
 
