@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
-
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 @ExtendWith(MockitoExtension.class)
 class InitiatePaymentUseCaseTest {
 
@@ -41,12 +41,21 @@ class InitiatePaymentUseCaseTest {
     @InjectMocks
     InitiatePaymentUseCase useCase;
 
+
+
+    @Mock
+    PreventDuplicateChargeUseCase preventDuplicateChargeUseCase;
+
+
+
+
     @Test
     void rejectsOrderNotPendingPayment() {
         var orderId = UUID.randomUUID();
         when(orderService.getOrder(orderId)).thenReturn(
                 new Order(orderId, OrderStatus.PAID, BigDecimal.TEN, "COP", "a@b.com")
         );
+
 
         assertThatThrownBy(() -> useCase.execute(orderId))
                 .isInstanceOf(InvalidOrderStateException.class);
@@ -55,20 +64,12 @@ class InitiatePaymentUseCaseTest {
     @Test
     void rejectsDuplicateApprovedPayment() {
         var orderId = UUID.randomUUID();
-        when(orderService.getOrder(orderId)).thenReturn(
-                new Order(orderId, OrderStatus.PENDING, BigDecimal.TEN, "COP", "a@b.com")
-        );
-        when(paymentRepository.existsByOrderIdAndStatusIn(eq(orderId), any(PaymentStatus[].class))).thenReturn(true);
-        when(paymentRepository.findActiveByOrderId(orderId)).thenReturn(Optional.of(
-                new Payment(
-                        UUID.randomUUID(), orderId, BigDecimal.TEN, "COP", PaymentStatus.APROBADO,
-                        "ref", "tx", "url", null, "a@b.com",
-                        Instant.now(), Instant.now(), Instant.now()
-                )
-        ));
+        doThrow(new co.edu.univalle.payment.domain.exception.PaymentDomainException(
+                "Ya existe un pago activo para la orden: " + orderId))
+                .when(preventDuplicateChargeUseCase).validate(orderId);
 
         assertThatThrownBy(() -> useCase.execute(orderId))
-                .isInstanceOf(DuplicatePaymentException.class);
+                .isInstanceOf(co.edu.univalle.payment.domain.exception.PaymentDomainException.class);
     }
 
     @Test
@@ -77,10 +78,9 @@ class InitiatePaymentUseCaseTest {
         when(orderService.getOrder(orderId)).thenReturn(
                 new Order(orderId, OrderStatus.PENDING, BigDecimal.valueOf(100), "COP", "a@b.com")
         );
-        when(paymentRepository.existsByOrderIdAndStatusIn(eq(orderId), any(PaymentStatus[].class))).thenReturn(false);
         when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(paymentGateway.createCheckout(any())).thenReturn(
-                new PaymentGatewayPort.GatewayCheckoutResult("tx-1", "https://checkout.test", "PENDING",null)
+                new PaymentGatewayPort.GatewayCheckoutResult("tx-1", "https://checkout.test", "PENDING", null)
         );
 
         var response = useCase.execute(orderId);
