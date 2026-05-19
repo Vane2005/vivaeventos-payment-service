@@ -161,12 +161,8 @@ public class FlujoExitosoYEstadoIntermedioIntegrationTest {
     static void stopMocks() throws IOException {
         orderServiceMock.shutdown();
         wompiMock.shutdown();
-        while (orderServiceMock.getRequestCount() > 0) {
-            orderServiceMock.takeRequest();
-        }
-        wompiMock.drainRequests();
     }
-
+    
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("services.order-service.url",
