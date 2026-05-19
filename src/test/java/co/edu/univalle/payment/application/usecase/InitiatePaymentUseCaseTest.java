@@ -80,7 +80,7 @@ class InitiatePaymentUseCaseTest {
         when(paymentRepository.existsByOrderIdAndStatusIn(eq(orderId), any(PaymentStatus[].class))).thenReturn(false);
         when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(paymentGateway.createCheckout(any())).thenReturn(
-                new PaymentGatewayPort.GatewayCheckoutResult("tx-1", "https://checkout.test", "PENDING")
+                new PaymentGatewayPort.GatewayCheckoutResult("tx-1", "https://checkout.test", "PENDING",null)
         );
 
         var response = useCase.execute(orderId);
