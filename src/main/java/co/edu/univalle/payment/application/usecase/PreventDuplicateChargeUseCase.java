@@ -30,8 +30,7 @@ public class PreventDuplicateChargeUseCase {
         );
 
         if (hasActivePayment) {
-            throw new PaymentDomainException(
-                    "Ya existe un pago activo para la orden: " + orderId);
+            throw new DuplicatePaymentException(orderId);
         }
     }
 }
