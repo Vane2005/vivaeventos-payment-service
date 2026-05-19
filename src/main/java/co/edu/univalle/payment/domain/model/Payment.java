@@ -32,7 +32,7 @@ public record Payment(
         return new Payment(
                 id, orderId, amount, currency, status,
                 gatewayReference, transactionId, checkoutUrl, failureReason,
-                customerEmail, createdAt, now, paidAt
+                customerEmail, createdAt, now, status == PaymentStatus.APROBADO ? now : paidAt
         );
     }
 
