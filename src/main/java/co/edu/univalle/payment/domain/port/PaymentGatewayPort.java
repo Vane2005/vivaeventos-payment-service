@@ -11,7 +11,8 @@ public interface PaymentGatewayPort {
     record GatewayCheckoutResult(
             String transactionId,
             String checkoutUrl,
-            String status
+            String status,
+            String failureReason
     ) {}
 
     record GatewayTransactionStatus(

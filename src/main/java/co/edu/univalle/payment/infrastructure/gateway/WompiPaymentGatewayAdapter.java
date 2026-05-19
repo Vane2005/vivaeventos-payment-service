@@ -72,7 +72,8 @@ public class WompiPaymentGatewayAdapter implements PaymentGatewayPort {
         return new GatewayCheckoutResult(
                 data.id(),
                 checkoutUrl,
-                data.status() != null ? data.status() : "PENDING"
+                data.status() != null ? data.status() : "PENDING",
+                data.error_message()
         );
     }
 
@@ -101,6 +102,7 @@ public class WompiPaymentGatewayAdapter implements PaymentGatewayPort {
             String id,
             String status,
             String status_message,
-            String payment_link_url
+            String payment_link_url,
+            String error_message
     ) {}
 }

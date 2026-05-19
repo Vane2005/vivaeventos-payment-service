@@ -76,7 +76,14 @@ public class InitiatePaymentUseCase {
                 mapGatewayStatus(checkout.status()),
                 Instant.now()
         );
-
+        if (updated.status() == PaymentStatus.FALLIDO) {
+            updated = updated.withFailure(
+                    checkout.failureReason() != null
+                            ? checkout.failureReason()
+                            : "Pago rechazado por la pasarela",
+                    Instant.now()
+            );
+        }
         updated = paymentRepository.save(updated);
         return PaymentResponse.from(updated);
     }

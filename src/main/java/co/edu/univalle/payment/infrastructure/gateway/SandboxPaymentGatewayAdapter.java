@@ -19,7 +19,7 @@ public class SandboxPaymentGatewayAdapter implements PaymentGatewayPort {
     public GatewayCheckoutResult createCheckout(Payment payment) {
         var txId = "sandbox-tx-" + UUID.randomUUID();
         var url = "https://sandbox.wompi.co/checkout/" + txId + "?ref=" + payment.gatewayReference();
-        return new GatewayCheckoutResult(txId, url, "PENDING");
+        return new GatewayCheckoutResult(txId, url, "PENDING", null); // ← agregar null
     }
 
     @Override
