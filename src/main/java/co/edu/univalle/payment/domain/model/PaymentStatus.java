@@ -7,7 +7,8 @@ public enum PaymentStatus {
     PENDIENTE,
     EN_PROCESO,
     APROBADO,
-    FALLIDO;
+    FALLIDO,
+    REEMBOLSADO;
 
     @JsonValue
     public String toJson() {

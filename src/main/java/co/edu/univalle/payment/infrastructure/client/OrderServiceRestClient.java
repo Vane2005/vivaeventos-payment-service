@@ -4,20 +4,23 @@ import co.edu.univalle.payment.domain.exception.InvalidOrderStateException;
 import co.edu.univalle.payment.domain.model.Order;
 import co.edu.univalle.payment.domain.model.OrderStatus;
 import co.edu.univalle.payment.domain.port.OrderServicePort;
+import co.edu.univalle.payment.infrastructure.messaging.EventCancelledConsumer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
-
+import java.util.List;
 import java.math.BigDecimal;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class OrderServiceRestClient implements OrderServicePort {
 
     private final RestClient restClient;
-
+    private static final Logger log = LoggerFactory.getLogger(OrderServiceRestClient.class);
     public OrderServiceRestClient(
             @Value("${services.order-service.url}") String baseUrl
     ) {
@@ -75,6 +78,24 @@ public class OrderServiceRestClient implements OrderServicePort {
             );
         }
     }
+    @Override
+    public List<UUID> getOrderIdsByEvent(UUID eventId) {
+        try {
+            var response = restClient.get()
+                    .uri("/api/v1/orders/by-event/{eventId}", eventId)
+                    .retrieve()
+                    .body(OrderIdListResponse.class);
+            return response != null ? response.orderIds() : List.of();
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return List.of();
+            }
+            log.error("Error consultando órdenes por evento: {}", ex.getMessage());
+            return List.of();
+        }
+    }
+
+    record OrderIdListResponse(List<UUID> orderIds) {}
 
     private OrderStatus parseStatus(String status) {
         if (status == null) {

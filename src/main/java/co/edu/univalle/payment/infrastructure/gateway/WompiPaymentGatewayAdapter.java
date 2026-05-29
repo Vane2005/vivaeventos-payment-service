@@ -2,6 +2,7 @@ package co.edu.univalle.payment.infrastructure.gateway;
 
 import co.edu.univalle.payment.domain.exception.PaymentDomainException;
 import co.edu.univalle.payment.domain.model.Payment;
+import co.edu.univalle.payment.domain.port.GatewayRefundResult;
 import co.edu.univalle.payment.domain.port.PaymentGatewayPort;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -9,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Map;
 
@@ -95,6 +97,25 @@ public class WompiPaymentGatewayAdapter implements PaymentGatewayPort {
                 data.status_message()
         );
     }
+    @Override
+    public GatewayRefundResult refund(Payment payment, String reason) {
+        var body = Map.of(
+                "amount_in_cents", payment.amount().multiply(BigDecimal.valueOf(100)).longValue(),
+                "reason", reason
+        );
+
+        var response = restClient.post()
+                .uri("/transactions/{id}/refunds", payment.gatewayTransactionId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(WompiRefundResponse.class);
+
+        return new GatewayRefundResult(response.data().id(), response.data().status());
+    }
+
+    record WompiRefundResponse(WompiRefundData data) {}
+    record WompiRefundData(String id, String status) {}
 
     record WompiTransactionResponse(WompiTransactionData data) {}
 
