@@ -6,6 +6,7 @@ import co.edu.univalle.payment.domain.port.PaymentRepositoryPort;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,5 +50,13 @@ public class PaymentRepositoryAdapter implements PaymentRepositoryPort {
     @Override
     public boolean existsByOrderIdAndStatusIn(UUID orderId, PaymentStatus... statuses) {
         return jpaRepository.existsByOrderIdAndStatusIn(orderId, Arrays.asList(statuses));
+    }
+
+    @Override
+    public List<Payment> findByOrderIdsAndStatus(List<UUID> orderIds, PaymentStatus status) {
+        return jpaRepository.findByOrderIdInAndStatus(orderIds, status)
+                .stream()
+                .map(PaymentMapper::toDomain)
+                .toList();
     }
 }

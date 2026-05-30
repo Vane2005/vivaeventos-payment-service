@@ -8,6 +8,8 @@ public interface PaymentGatewayPort {
 
     GatewayTransactionStatus queryTransactionStatus(String gatewayTransactionId);
 
+    GatewayRefundResult refund(Payment payment, String reason);
+
     record GatewayCheckoutResult(
             String transactionId,
             String checkoutUrl,
