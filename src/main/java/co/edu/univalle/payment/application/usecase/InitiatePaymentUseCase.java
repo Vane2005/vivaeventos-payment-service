@@ -8,6 +8,7 @@ import co.edu.univalle.payment.domain.model.PaymentStatus;
 import co.edu.univalle.payment.domain.port.OrderServicePort;
 import co.edu.univalle.payment.domain.port.PaymentGatewayPort;
 import co.edu.univalle.payment.domain.port.PaymentRepositoryPort;
+import co.edu.univalle.payment.infrastructure.messaging.PaymentApprovedMessage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -98,7 +99,23 @@ public class InitiatePaymentUseCase {
         updated = paymentRepository.save(updated);
         if (updated.status() == PaymentStatus.APROBADO) {
             orderService.markPaymentApproved(orderId);
-            rabbitTemplate.convertAndSend(exchange, approvedRoutingKey, PaymentResponse.from(updated));
+            System.out.println("=== PUBLICANDO EVENTO ===");
+            System.out.println("Exchange: " + exchange);
+            System.out.println("RoutingKey: " + approvedRoutingKey);
+            rabbitTemplate.convertAndSend(
+                    exchange,
+                    approvedRoutingKey,
+                    new PaymentApprovedMessage(
+                            updated.id(),
+                            updated.orderId(),
+                            updated.amount(),
+                            updated.currency(),
+                            updated.gatewayReference(),
+                            updated.customerEmail(),
+                            updated.paidAt()
+                    )
+            );
+            System.out.println("=== EVENTO ENVIADO ===");
         }
         return PaymentResponse.from(updated);
     }
