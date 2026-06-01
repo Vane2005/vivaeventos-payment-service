@@ -19,14 +19,25 @@ public class SandboxPaymentGatewayAdapter implements PaymentGatewayPort {
     @Override
     public GatewayCheckoutResult createCheckout(Payment payment) {
         var txId = "sandbox-tx-" + UUID.randomUUID();
-        var url = "https://sandbox.wompi.co/checkout/" + txId + "?ref=" + payment.gatewayReference();
-        return new GatewayCheckoutResult(txId, url, "PENDING", null); // ← agregar null
+        var url = "sandbox-local";
+
+        return new GatewayCheckoutResult(
+                txId,
+                url,
+                "APPROVED",
+                null
+        );
     }
 
     @Override
     public GatewayTransactionStatus queryTransactionStatus(String gatewayTransactionId) {
-        return new GatewayTransactionStatus(gatewayTransactionId, "PENDING", "Esperando confirmación");
+        return new GatewayTransactionStatus(
+                gatewayTransactionId,
+                "APPROVED",
+                "Pago aprobado en sandbox"
+        );
     }
+
     @Override
     public GatewayRefundResult refund(Payment payment, String reason) {
         return new GatewayRefundResult("sandbox-refund-" + UUID.randomUUID(), "REFUNDED");

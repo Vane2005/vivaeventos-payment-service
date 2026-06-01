@@ -11,7 +11,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment-db
       RABBITMQ_HOST: rabbitmq
-      SERVICES_ORDER_SERVICE_URL: http://host.docker.internal:8083
+      SERVICES_ORDER_SERVICE_URL: http://172.20.0.1:8083
     depends_on:
       - postgres
       - rabbitmq
