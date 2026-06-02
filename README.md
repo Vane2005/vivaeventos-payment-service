@@ -2,22 +2,27 @@
 
 Microservicio de pagos (US-08). Puerto **8084**, BD PostgreSQL **5435**.
 
+Integración con **Stripe Checkout** (sandbox/test). El email del cliente se obtiene de **order-service** (registro del usuario en el flujo de compra).
+
 ## Endpoints
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | `POST` | `/api/v1/payments` | Inicia el pago de una orden (`{"orderId": "uuid"}`) |
 | `GET` | `/api/v1/payments/{paymentId}` | Consulta un pago |
-| `POST` | `/api/v1/payments/callback/wompi` | Webhook de Wompi |
-| `POST` | `/api/v1/payments/callback/confirm?transactionId=` | Confirmación manual por ID de transacción |
+| `GET` | `/api/v1/payments/callback/success?session_id=` | Retorno de Stripe tras pago exitoso (confirma y redirige al frontend) |
+| `GET` | `/api/v1/payments/callback/cancel` | Retorno de Stripe si el usuario cancela |
+| `GET` | `/api/v1/payments/stripe/config` | Clave publicable de Stripe para el frontend |
+| `POST` | `/api/v1/payments/callback/stripe` | Webhook de Stripe (producción / Stripe CLI) |
+| `POST` | `/api/v1/payments/callback/confirm?transactionId=` | Confirmación manual por ID de sesión |
 
 ## Contrato con order-service
 
 - `GET /api/v1/orders/{orderId}` → `{ id, status, totalPrice, customerEmail, currency }`
-  - `customerEmail` y `currency` son obligatorios para iniciar el pago (pasarela Wompi).
+  - `customerEmail` y `currency` son obligatorios (el email viene del usuario al crear la orden).
 - `PATCH /api/v1/orders/{orderId}/confirm` → confirma el pago de la orden
 
-Estados válidos para iniciar pago en payment-service: `PENDING` (respuesta de order-service).
+Estados válidos para iniciar pago: `PENDING`.
 
 ## Mensajería RabbitMQ
 
@@ -26,29 +31,49 @@ Estados válidos para iniciar pago en payment-service: `PENDING` (respuesta de o
 | `pago.aprobado` | ticket-service | Pago aprobado → generar boletas |
 | `pago.fallido` | notification-service | Pago rechazado → notificar cliente |
 
-Exchange: `vivaeventos.payments`
+Exchange: `vivaeventos.events`
 
-## Pasarela Wompi (sandbox real)
+## Pasarela Stripe (modo prueba)
 
-```properties
-PAYMENT_GATEWAY_PROVIDER=wompi
-WOMPI_PRIVATE_KEY=prv_test_...
-WOMPI_PUBLIC_KEY=pub_test_...
-WOMPI_CALLBACK_URL=http://localhost:8084/api/v1/payments/callback/wompi
+1. Crea cuenta gratuita en [Stripe](https://dashboard.stripe.com/register).
+2. En [API keys (test)](https://dashboard.stripe.com/test/apikeys) copia la **Secret key** (`sk_test_...`).
+3. Para webhooks locales, instala [Stripe CLI](https://stripe.com/docs/stripe-cli) y ejecuta:
+
+```bash
+stripe listen --forward-to localhost:8084/api/v1/payments/callback/stripe
 ```
 
-Desarrollo local sin credenciales: `PAYMENT_GATEWAY_PROVIDER=sandbox` (por defecto).
+Copia el `whsec_...` que muestra el CLI a tu `.env`.
+
+Variables en `.env`:
+
+```env
+PAYMENT_GATEWAY_PROVIDER=stripe
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...          # opcional en local (ver abajo)
+STRIPE_SUCCESS_URL=http://localhost:8084/api/v1/payments/callback/success?session_id={CHECKOUT_SESSION_ID}
+STRIPE_CANCEL_URL=http://localhost:8084/api/v1/payments/callback/cancel
+STRIPE_RETURN_URL=http://localhost:3000/payment/success?session_id={CHECKOUT_SESSION_ID}
+STRIPE_CANCEL_RETURN_URL=http://localhost:3000/payment/cancel
+```
+
+**Flujo sin Stripe CLI:** Stripe redirige al backend (`/callback/success`), el servicio confirma el pago consultando la sesión y redirige al frontend con `session_id`.
+
+**Con webhook (recomendado en producción):** `stripe listen --forward-to localhost:8084/api/v1/payments/callback/stripe`
+
+Tarjeta de prueba: `4242 4242 4242 4242` — [más opciones](https://docs.stripe.com/testing#cards).
+
+Desarrollo sin credenciales: `PAYMENT_GATEWAY_PROVIDER=sandbox` (checkout simulado; confirmar con `/callback/confirm`).
 
 ## Levantar el servicio
-
-Copia `.env.example` a `.env` en la raíz (contraseñas y secretos solo ahí; no van en `application.properties`).
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Para ejecutar sin Docker: `cp .env.example .env` y luego `./mvnw spring-boot:run` (Spring carga variables desde el entorno; en Windows puedes usar herramientas como `dotenv` o exportar las variables del `.env`).
+Sin Docker: `./mvnw spring-boot:run` (con variables del `.env` exportadas).
 
 Tests:
 
@@ -58,7 +83,4 @@ Tests:
 
 ## CI (GitHub Actions)
 
-En cada push/PR a `main`, `develop` o `feature/**` se ejecuta:
-
-- `./mvnw test` y empaquetado del JAR (Java 21)
-- build de la imagen Docker (sin publicar a un registry)
+En cada push/PR a `main`, `develop` o `feature/**` se ejecuta `./mvnw test` y build Docker (Java 21).

@@ -1,6 +1,7 @@
 package co.edu.univalle.payment.integration;
 
 import co.edu.univalle.payment.domain.model.PaymentStatus;
+import co.edu.univalle.payment.testsupport.StripeMockServer;
 import co.edu.univalle.payment.infrastructure.messaging.PaymentApprovedMessage;
 import co.edu.univalle.payment.infrastructure.persistence.PaymentJpaRepository;
 import okhttp3.mockwebserver.MockResponse;
@@ -40,6 +41,7 @@ import static org.mockito.Mockito.verify;
 class FailedPaymentFlowIntegrationTest {
 
     static MockWebServer orderServiceMock;
+    static StripeMockServer stripeMock;
 
     @MockBean
     RabbitTemplate rabbitTemplate;
@@ -57,19 +59,33 @@ class FailedPaymentFlowIntegrationTest {
     String approvedRoutingKey;
 
     @BeforeAll
-    static void startOrderMock() throws IOException {
+    static void startMocks() throws IOException {
         orderServiceMock = new MockWebServer();
         orderServiceMock.start();
+        stripeMock = new StripeMockServer();
+        stripeMock.start();
     }
 
     @AfterAll
-    static void stopOrderMock() throws IOException {
+    static void stopMocks() throws IOException {
         orderServiceMock.shutdown();
+        stripeMock.shutdown();
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void resetStripeMock() {
+        stripeMock.reset();
     }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("services.order-service.url", () -> orderServiceMock.url("/").toString().replaceAll("/$", ""));
+        registry.add("payment.gateway.provider", () -> "stripe");
+        registry.add("stripe.secret-key", () -> "sk_test_mock");
+        registry.add("stripe.api-base", () -> stripeMock.getBaseUrl());
+        registry.add("stripe.success-url", () -> "http://localhost:3000/success");
+        registry.add("stripe.cancel-url", () -> "http://localhost:3000/cancel");
+        registry.add("stripe.webhook-secret", () -> "");
     }
 
     @Test
@@ -103,21 +119,15 @@ class FailedPaymentFlowIntegrationTest {
         assertThat(initiateResponse.getBody()).isNotNull();
 
         var reference = initiateResponse.getBody().gatewayReference();
+        var sessionId = initiateResponse.getBody().gatewayTransactionId();
 
         var callbackResponse = restTemplate.postForEntity(
-                "/api/v1/payments/callback/wompi",
-                new HttpEntity<>("""
-                        {
-                          "data": {
-                            "transaction": {
-                              "id": "tx-declined-001",
-                              "status": "DECLINED",
-                              "reference": "%s"
-                            }
-                          }
-                        }
-                        """.formatted(reference), headers),
-                Void.class
+                "/api/v1/payments/callback/stripe",
+                new HttpEntity<>(
+                        StripeMockServer.checkoutSessionExpiredWebhook(reference, sessionId),
+                        headers
+                ),
+                String.class
         );
 
         assertThat(callbackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);

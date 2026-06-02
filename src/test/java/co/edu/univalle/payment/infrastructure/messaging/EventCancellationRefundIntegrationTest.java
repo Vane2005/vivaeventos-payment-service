@@ -4,7 +4,7 @@ import co.edu.univalle.payment.domain.model.PaymentStatus;
 import co.edu.univalle.payment.infrastructure.messaging.EventCancelledMessage;
 import co.edu.univalle.payment.infrastructure.persistence.PaymentEntity;
 import co.edu.univalle.payment.infrastructure.persistence.PaymentJpaRepository;
-import lombok.Getter;
+import co.edu.univalle.payment.testsupport.StripeMockServer;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.*;
@@ -33,51 +33,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @DisplayName("US13: Pruebas de integración - Reembolso por cancelación de evento (notificar compradores e iniciar devolución)")
 public class EventCancellationRefundIntegrationTest {
-
-    static class WompiMockServer {
-        private final MockWebServer mockWebServer;
-        @Getter
-        private String lastTransactionId;
-        @Getter
-        private String lastRefundId;
-
-        public WompiMockServer() {
-            this.mockWebServer = new MockWebServer();
-        }
-
-        public void start() throws IOException {
-            mockWebServer.start();
-        }
-
-        public void shutdown() throws IOException {
-            mockWebServer.shutdown();
-        }
-
-        public String getBaseUrl() {
-            return mockWebServer.url("/").toString().replaceAll("/$", "");
-        }
-
-        public void stubRefundTransaction() {
-            this.lastRefundId = "ref_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-            String responseBody = String.format(java.util.Locale.US, """
-                    {
-                      "data": {
-                        "id": "%s",
-                        "status": "REFUNDED",
-                        "created_at": "2024-01-15T10:05:00.000Z"
-                      }
-                    }
-                    """, lastRefundId);
-            enqueueSuccess(responseBody);
-        }
-
-        private void enqueueSuccess(String body) {
-            mockWebServer.enqueue(new MockResponse()
-                    .setResponseCode(200)
-                    .setBody(body)
-                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE));
-        }
-    }
 
     static class OrderServiceMockServer {
         private final MockWebServer mockWebServer;
@@ -111,7 +66,7 @@ public class EventCancellationRefundIntegrationTest {
         }
     }
 
-    static WompiMockServer wompiMock;
+    static StripeMockServer stripeMock;
     static OrderServiceMockServer orderServiceMockServer;
 
     @MockBean
@@ -122,8 +77,8 @@ public class EventCancellationRefundIntegrationTest {
 
     @BeforeAll
     static void startMocks() throws IOException {
-        wompiMock = new WompiMockServer();
-        wompiMock.start();
+        stripeMock = new StripeMockServer();
+        stripeMock.start();
 
         orderServiceMockServer = new OrderServiceMockServer();
         orderServiceMockServer.start();
@@ -131,7 +86,7 @@ public class EventCancellationRefundIntegrationTest {
 
     @AfterAll
     static void stopMocks() throws IOException {
-        wompiMock.shutdown();
+        stripeMock.shutdown();
         orderServiceMockServer.shutdown();
     }
 
@@ -139,12 +94,12 @@ public class EventCancellationRefundIntegrationTest {
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("services.order-service.url",
                 () -> orderServiceMockServer.getBaseUrl());
-        registry.add("payment.gateway.provider", () -> "wompi");
-        registry.add("wompi.base-url", () -> wompiMock.getBaseUrl());
-        registry.add("wompi.private-key", () -> "prv_test_mock");
-        registry.add("wompi.public-key", () -> "pub_test_mock");
-        registry.add("wompi.redirect-url", () -> "https://vivaeventos.com/checkout/redirect");
-        registry.add("wompi.callback-url", () -> "https://vivaeventos.com/api/v1/payments/callback/wompi");
+        registry.add("payment.gateway.provider", () -> "stripe");
+        registry.add("stripe.secret-key", () -> "sk_test_mock");
+        registry.add("stripe.api-base", () -> stripeMock.getBaseUrl());
+        registry.add("stripe.success-url", () -> "http://localhost:3000/success");
+        registry.add("stripe.cancel-url", () -> "http://localhost:3000/cancel");
+        registry.add("stripe.webhook-secret", () -> "");
     }
 
     @BeforeEach
@@ -164,8 +119,7 @@ public class EventCancellationRefundIntegrationTest {
         createApprovedPayment(orderId2);
 
         orderServiceMockServer.stubGetOrderIdsByEvent(eventId, List.of(orderId1, orderId2));
-        wompiMock.stubRefundTransaction();
-        wompiMock.stubRefundTransaction();
+        stripeMock.setSessionMode(StripeMockServer.SessionStubMode.PAID);
 
 
         var payments = paymentJpaRepository.findAll();
@@ -221,7 +175,7 @@ public class EventCancellationRefundIntegrationTest {
         paymentEntity.setCurrency("COP");
         paymentEntity.setStatus(PaymentStatus.APROBADO);
         paymentEntity.setGatewayReference("ref_" + UUID.randomUUID());
-        paymentEntity.setGatewayTransactionId("tx_" + UUID.randomUUID());
+        paymentEntity.setGatewayTransactionId("cs_test_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
         paymentEntity.setCustomerEmail("cliente@test.com");
         paymentEntity.setCreatedAt(Instant.now());
         paymentEntity.setUpdatedAt(Instant.now());

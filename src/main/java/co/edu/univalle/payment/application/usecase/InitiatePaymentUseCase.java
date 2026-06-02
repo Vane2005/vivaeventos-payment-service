@@ -125,9 +125,9 @@ public class InitiatePaymentUseCase {
             return PaymentStatus.EN_PROCESO;
         }
         return switch (gatewayStatus.toUpperCase()) {
-            case "APPROVED", "APPROVED_TRANSACTION", "APROBADO" -> PaymentStatus.APROBADO;
-            case "DECLINED", "ERROR", "VOIDED", "FALLIDO" -> PaymentStatus.FALLIDO;
-            case "PENDING" -> PaymentStatus.EN_PROCESO;
+            case "APPROVED", "APPROVED_TRANSACTION", "APROBADO", "PAID", "SUCCEEDED" -> PaymentStatus.APROBADO;
+            case "DECLINED", "ERROR", "VOIDED", "FALLIDO", "EXPIRED", "CANCELED", "FAILED" -> PaymentStatus.FALLIDO;
+            case "PENDING", "OPEN", "UNPAID" -> PaymentStatus.EN_PROCESO;
             default -> PaymentStatus.EN_PROCESO;
         };
     }

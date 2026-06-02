@@ -84,15 +84,18 @@ public class HandlePaymentCallbackUseCase {
     }
 
     private boolean isApproved(String status) {
-        return status.contains("APPROVED") || status.equals("APROBADO");
+        return status.contains("APPROVED") || status.equals("APROBADO")
+                || status.equals("PAID") || status.equals("SUCCEEDED");
     }
 
     private boolean isFailed(String status) {
         return status.contains("DECLINED") || status.contains("ERROR")
-                || status.contains("VOIDED") || status.equals("FALLIDO");
+                || status.contains("VOIDED") || status.equals("FALLIDO")
+                || status.equals("EXPIRED") || status.equals("CANCELED") || status.equals("FAILED");
     }
 
     private boolean isPending(String status) {
-        return status.contains("PENDING") || status.isEmpty();
+        return status.contains("PENDING") || status.equals("OPEN") || status.equals("UNPAID")
+                || status.isEmpty();
     }
 }
