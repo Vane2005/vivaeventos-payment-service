@@ -2,10 +2,9 @@ package co.edu.univalle.payment.integration;
 
 import co.edu.univalle.payment.domain.model.PaymentStatus;
 import co.edu.univalle.payment.infrastructure.persistence.PaymentJpaRepository;
-import lombok.Getter;
+import co.edu.univalle.payment.testsupport.StripeMockServer;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
-import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.*;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,141 +39,8 @@ import static org.mockito.Mockito.*;
 @DisplayName("SCUM-41: Pruebas de integración - Flujo fallido y callback")
 public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
 
-    static class WompiMockServer {
-        private final MockWebServer mockWebServer;
-        @Getter
-        private String lastTransactionId;
-        private String lastReference;
-
-        public WompiMockServer() {
-            this.mockWebServer = new MockWebServer();
-        }
-
-        public void start() throws IOException {
-            mockWebServer.start();
-        }
-
-        public void shutdown() throws IOException {
-            mockWebServer.shutdown();
-        }
-
-
-        public void drainRequests() throws InterruptedException {
-            while (mockWebServer.getRequestCount() > 0) {
-                mockWebServer.takeRequest();
-            }
-        }
-
-        public String getBaseUrl() {
-            return mockWebServer.url("/").toString().replaceAll("/$", "");
-        }
-
-        public int getRequestCount() {
-            return mockWebServer.getRequestCount();
-        }
-
-        public RecordedRequest takeRequest() throws InterruptedException {
-            return mockWebServer.takeRequest();
-        }
-
-        public void stubCreateTransactionPending() {
-            this.lastTransactionId = "tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-            String responseBody = String.format(java.util.Locale.US,"""
-                    {
-                      "data": {
-                        "id": "%s",
-                        "status": "PENDING",
-                        "redirect_url": "https://checkout.wompi.co/pay/%s",
-                        "created_at": "2024-01-15T10:00:00.000Z"
-                      }
-                    }
-                    """, lastTransactionId, lastTransactionId);
-            enqueueSuccess(responseBody);
-        }
-
-        public void stubCreateTransactionDeclined() {
-            this.lastTransactionId = "tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-            String responseBody = String.format(java.util.Locale.US,"""
-                    {
-                      "data": {
-                        "id": "%s",
-                        "status": "DECLINED",
-                        "error_message": "Tarjeta rechazada por el banco",
-                        "created_at": "2024-01-15T10:00:00.000Z"
-                      }
-                    }
-                    """, lastTransactionId);
-            enqueueSuccess(responseBody);
-        }
-
-        public void stubCreateTransactionError() {
-            this.lastTransactionId = "tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-            String responseBody = String.format(java.util.Locale.US,"""
-                    {
-                      "data": {
-                        "id": "%s",
-                        "status": "ERROR",
-                        "error_message": "Error interno en la pasarela",
-                        "created_at": "2024-01-15T10:00:00.000Z"
-                      }
-                    }
-                    """, lastTransactionId);
-            enqueueSuccess(responseBody);
-        }
-
-        public void stubCreateTransactionUnauthorized() {
-            mockWebServer.enqueue(new MockResponse()
-                    .setResponseCode(401)
-                    .setBody("""
-                            {
-                              "error": {
-                                "type": "authentication_error",
-                                "reason": "Invalid API key"
-                              }
-                            }
-                            """)
-                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE));
-        }
-
-        public void stubGetTransactionNotFound(String transactionId) {
-            mockWebServer.enqueue(new MockResponse()
-                    .setResponseCode(404)
-                    .setBody("""
-                            {
-                              "error": {
-                                "type": "not_found",
-                                "reason": "Transaction not found"
-                              }
-                            }
-                            """)
-                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE));
-        }
-
-        private void enqueueSuccess(String body) {
-            mockWebServer.enqueue(new MockResponse()
-                    .setResponseCode(200)
-                    .setBody(body)
-                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE));
-        }
-
-        private String orderMockResponse(UUID orderId, String status, double amount) {
-            return String.format(java.util.Locale.US,
-                    """
-                    {
-                      "id": "%s",
-                      "status": "%s",
-                      "totalPrice": %.2f,
-                      "customerEmail": "cliente@test.com",
-                      "currency": "COP"
-                    }
-                    """, orderId, status, amount);
-         }
-
-
-    }
-
     static MockWebServer orderServiceMock;
-    static WompiMockServer wompiMock;
+    static StripeMockServer stripeMock;
 
 
     @MockBean
@@ -197,34 +63,31 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
         orderServiceMock = new MockWebServer();
         orderServiceMock.start();
 
-        wompiMock = new WompiMockServer();
-        wompiMock.start();
+        stripeMock = new StripeMockServer();
+        stripeMock.start();
     }
 
     @AfterAll
     static void stopMocks() throws IOException {
         orderServiceMock.shutdown();
-        wompiMock.shutdown();
+        stripeMock.shutdown();
     }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("services.order-service.url",
                 () -> orderServiceMock.url("/").toString().replaceAll("/$", ""));
-
-
-        registry.add("payment.gateway.provider", () -> "wompi");
-
-        registry.add("wompi.base-url", () -> wompiMock.getBaseUrl());
-        registry.add("wompi.private-key", () -> "prv_test_mock");
-        registry.add("wompi.public-key", () -> "pub_test_mock");
-        registry.add("wompi.redirect-url", () -> "https://vivaeventos.com/checkout/redirect");
-        registry.add("wompi.callback-url", () -> "https://vivaeventos.com/api/v1/payments/callback/wompi");
+        registry.add("payment.gateway.provider", () -> "stripe");
+        registry.add("stripe.secret-key", () -> "sk_test_mock");
+        registry.add("stripe.api-base", () -> stripeMock.getBaseUrl());
+        registry.add("stripe.success-url", () -> "http://localhost:3000/success");
+        registry.add("stripe.cancel-url", () -> "http://localhost:3000/cancel");
+        registry.add("stripe.webhook-secret", () -> "");
     }
 
     @BeforeEach
     void setUp() {
-
+        stripeMock.reset();
         clearInvocations(rabbitTemplate);
     }
 
@@ -237,7 +100,7 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
                 .setBody(orderMockResponse(orderId, "PENDING", 150000.00))
                 .setHeader("Content-Type", "application/json"));
 
-        wompiMock.stubCreateTransactionDeclined();
+        stripeMock.stubCreateSessionDeclined();
 
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -274,7 +137,7 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
                 .setBody(orderMockResponse(orderId, "PENDING", 120000.00))
                 .setHeader("Content-Type", "application/json"));
 
-        wompiMock.stubCreateTransactionError();
+        stripeMock.stubCreateSessionError();
 
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -301,7 +164,7 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
                 .setBody(orderMockResponse(orderId, "PENDING", 65000.00))
                 .setHeader("Content-Type", "application/json"));
 
-        wompiMock.stubCreateTransactionPending();
+        stripeMock.stubCreateSessionPending();
 
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -313,12 +176,15 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
         );
 
         var reference = initiateResponse.getBody().gatewayReference();
-        var transactionId = wompiMock.getLastTransactionId();
+        var sessionId = initiateResponse.getBody().gatewayTransactionId();
 
         var callbackResponse = restTemplate.postForEntity(
-                "/api/v1/payments/callback/wompi",
-                new HttpEntity<>(wompiCallbackPayload(reference, transactionId, "DECLINED"), headers),
-                Void.class
+                "/api/v1/payments/callback/stripe",
+                new HttpEntity<>(
+                        StripeMockServer.checkoutSessionExpiredWebhook(reference, sessionId),
+                        headers
+                ),
+                String.class
         );
 
         assertThat(callbackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -345,7 +211,7 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
                 .setBody(orderMockResponse(orderId, "PENDING", 70000.00))
                 .setHeader("Content-Type", "application/json"));
 
-        wompiMock.stubCreateTransactionPending();
+        stripeMock.stubCreateSessionPending();
 
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -357,12 +223,15 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
         );
 
         var reference = initiateResponse.getBody().gatewayReference();
-        var transactionId = wompiMock.getLastTransactionId();
+        var sessionId = initiateResponse.getBody().gatewayTransactionId();
 
         var callbackResponse = restTemplate.postForEntity(
-                "/api/v1/payments/callback/wompi",
-                new HttpEntity<>(wompiCallbackPayload(reference, transactionId, "ERROR"), headers),
-                Void.class
+                "/api/v1/payments/callback/stripe",
+                new HttpEntity<>(
+                        StripeMockServer.checkoutSessionExpiredWebhook(reference, sessionId),
+                        headers
+                ),
+                String.class
         );
 
         assertThat(callbackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -383,7 +252,7 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
                 .setHeader("Content-Type", "application/json"));
         orderServiceMock.enqueue(new MockResponse().setResponseCode(200));
 
-        wompiMock.stubCreateTransactionPending();
+        stripeMock.stubCreateSessionPending();
 
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -395,13 +264,16 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
         );
 
         var reference = initiateResponse.getBody().gatewayReference();
-        var transactionId = wompiMock.getLastTransactionId();
-
+        var sessionId = initiateResponse.getBody().gatewayTransactionId();
+        stripeMock.setSessionMode(StripeMockServer.SessionStubMode.PAID);
 
         restTemplate.postForEntity(
-                "/api/v1/payments/callback/wompi",
-                new HttpEntity<>(wompiCallbackPayload(reference, transactionId, "APPROVED"), headers),
-                Void.class
+                "/api/v1/payments/callback/stripe",
+                new HttpEntity<>(
+                        StripeMockServer.checkoutSessionCompletedWebhook(reference, sessionId),
+                        headers
+                ),
+                String.class
         );
 
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -411,9 +283,12 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
 
 
         restTemplate.postForEntity(
-                "/api/v1/payments/callback/wompi",
-                new HttpEntity<>(wompiCallbackPayload(reference, transactionId, "APPROVED"), headers),
-                Void.class
+                "/api/v1/payments/callback/stripe",
+                new HttpEntity<>(
+                        StripeMockServer.checkoutSessionCompletedWebhook(reference, sessionId),
+                        headers
+                ),
+                String.class
         );
 
         verify(rabbitTemplate, times(1)).convertAndSend(
@@ -424,15 +299,15 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
     }
 
     @Test
-    @DisplayName("SCUM-41.6 - Error 401 de autenticación con Wompi")
-    void errorAutenticacionWompi_fallback() throws Exception {
+    @DisplayName("SCUM-41.6 - Error 401 de autenticación con Stripe")
+    void errorAutenticacionStripe_fallback() throws Exception {
         var orderId = UUID.randomUUID();
 
         orderServiceMock.enqueue(new MockResponse()
                 .setBody(orderMockResponse(orderId, "PENDING", 100000.00))
                 .setHeader("Content-Type", "application/json"));
 
-        wompiMock.stubCreateTransactionUnauthorized();
+        stripeMock.stubCreateSessionUnauthorized();
 
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -458,20 +333,6 @@ public class EstadoIntermedioYResolucionPorCallbackIntegrationTest {
                   "currency": "COP"
                 }
                 """, orderId, status, amount);
-    }
-
-    private String wompiCallbackPayload(String reference, String transactionId, String status) {
-        return String.format(java.util.Locale.US,"""
-                {
-                  "data": {
-                    "transaction": {
-                      "id": "%s",
-                      "status": "%s",
-                      "reference": "%s"
-                    }
-                  }
-                }
-                """, transactionId, status, reference);
     }
 
     record PaymentApiResponse(

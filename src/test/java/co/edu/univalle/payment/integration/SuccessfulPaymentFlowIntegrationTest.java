@@ -111,19 +111,10 @@ class SuccessfulPaymentFlowIntegrationTest {
         assertThat(paymentAfterInitiate.getCustomerEmail()).isEqualTo(ORDER_CUSTOMER_EMAIL);
         assertThat(paymentAfterInitiate.getCurrency()).isEqualTo(ORDER_CURRENCY);
 
+        var transactionId = initiateResponse.getBody().gatewayTransactionId();
         var callbackResponse = restTemplate.postForEntity(
-                "/api/v1/payments/callback/wompi",
-                new HttpEntity<>("""
-                        {
-                          "data": {
-                            "transaction": {
-                              "id": "tx-approved-001",
-                              "status": "APPROVED",
-                              "reference": "%s"
-                            }
-                          }
-                        }
-                        """.formatted(reference), headers),
+                "/api/v1/payments/callback/confirm?transactionId=" + transactionId,
+                HttpEntity.EMPTY,
                 Void.class
         );
 

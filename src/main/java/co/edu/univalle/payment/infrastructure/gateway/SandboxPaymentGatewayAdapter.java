@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Pasarela para entornos de prueba sin credenciales Wompi (perfil test / desarrollo local).
- * Genera URLs de checkout simuladas; los tests de integración usan mocks del puerto.
+ * Pasarela simulada sin credenciales Stripe (perfil test / desarrollo local sin .env).
+ * Devuelve checkout pendiente; la confirmación se hace vía callback o webhook de prueba.
  */
 @Component
 @ConditionalOnProperty(name = "payment.gateway.provider", havingValue = "sandbox")
@@ -24,7 +24,7 @@ public class SandboxPaymentGatewayAdapter implements PaymentGatewayPort {
         return new GatewayCheckoutResult(
                 txId,
                 url,
-                "APPROVED",
+                "PENDING",
                 null
         );
     }
