@@ -49,8 +49,8 @@ jobs:
           timeout 30s bash -c 'while ! nc -z localhost 5672; do sleep 1; done'
           echo "RabbitMQ está listo!"
 
-      - name: Run tests
-        run: ./mvnw -B test -Dspring.profiles.active=test
+      - name: Run tests + coverge
+        run: ./mvnw -B clean verify -Dspring.profiles.active=test
         env:
           SPRING_RABBITMQ_HOST: localhost
           SPRING_RABBITMQ_PORT: 5672
