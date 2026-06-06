@@ -32,4 +32,4 @@ jobs:
           context: .
           push: true
           # Cambia "vivaeventos" por tu usuario de Docker Hub
-          tags: vivaeventos/${{ github.event.repository.name }}:latest
+          tags: vane0205/${{ github.event.repository.name }}:latest
