@@ -55,6 +55,13 @@ jobs:
           SPRING_RABBITMQ_HOST: localhost
           SPRING_RABBITMQ_PORT: 5672
 
+      - name: Upload JaCoCo Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco
+
       - name: Build JAR
         run: ./mvnw -B package -DskipTests
 
